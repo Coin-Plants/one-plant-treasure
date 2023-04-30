@@ -3,7 +3,7 @@ const { ethers } = require('hardhat');
 
 const main = async() => {
 
-  const contractName = "Withdraw";
+  const contractName = "POLLENToken";
 
   const contractFactory = await ethers.getContractFactory(contractName);
 
