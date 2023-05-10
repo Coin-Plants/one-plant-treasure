@@ -28,3 +28,23 @@ npx hardhat verify <ADDRESS> --network <NETWORK_NAME>
 ```Test
 npx hardhat test
 npx hardhat test test/script.js
+
+--ENV File Structure
+
+ETHERSCAN_API_KEY   = <YOUR SCAN API KEY>
+BINANCE_API_KEY     = <YOUR SCAN API KEY>
+POLYGONSCAN_API_KEY = <YOUR SCAN API KEY>
+SNOWTRACE_API_KEY   = <YOUR SCAN API KEY>
+
+ETHEREUM_RPC_URL    = "https://rpc.ankr.com/eth"
+BINANCE_RPC_URL     = "https://bsc-dataseed1.binance.org"
+POLYGON_RPC_URL     = "https://polygon-rpc.com"
+AVALANCHE_RPC_URL   = "https://api.avax.network/ext/bc/C/rpc"
+
+GOERLI_RPC_URL      = "https://rpc.ankr.com/eth_goerli"
+SEPOLIA_RPC_URL     = "https://eth-sepolia.g.alchemy.com/v2/3ltQ_39-Ih6EU5-082Qdv5Qg8v4hjriP"
+BNBTEST_RPC_URL     = "https://bsc-testnet.public.blastapi.io"
+MUMBAI_RPC_URL      = "https://rpc.ankr.com/polygon_mumbai"
+FUJI_RPC_URL        = "https://rpc.ankr.com/avalanche_fuji"
+
+PRIVATE_KEY         = <YOUR WALLET PRIVATE KEY>
