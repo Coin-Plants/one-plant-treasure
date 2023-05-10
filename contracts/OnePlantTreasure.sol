@@ -40,6 +40,12 @@ contract OnePlantTreasure is Initializable, OwnableUpgradeable {
     // Mapping from owner to operator approvals
     mapping(address => mapping(address => bool)) private _operatorApprovals;
 
+    // Mapping from owner to list of owned token IDs
+    mapping(address => mapping(uint256 => uint256)) private _ownedTokens;
+
+    // Mapping from token ID to index of the owner tokens list
+    mapping(uint256 => uint256) private _ownedTokensIndex;
+
     //Mint Availability
     bool public open;
 
@@ -54,41 +60,35 @@ contract OnePlantTreasure is Initializable, OwnableUpgradeable {
     uint256 public DURATION;
     uint256 public MATURITY;
 
+    //lastReopened
+    uint256 public lastReopen;
+
     //Lowest Ember
     uint256 public lowestEmber;
 
     //Smart contract dev's Address
-    address public scDev;
+    address public smartDev;
 
     //Frontend dev's address
-    address public ftDev;
+    address public frontDev;
 
     //Equity for smart contract dev
-    uint256 public equityForSC;
+    uint256 public equityForSmart;
 
     //Equity for smart contract dev
-    uint256 public equityForFT;
+    uint256 public equityForFront;
 
     //Length of the whitelist.
     uint256 public countWL;
 
-    //Ratio of the Reward
-    uint256 public rewardRatio;
+    //Mapping to check if the tokenId owner has claimed the reward.
+    mapping(uint256 => bool) public isClaimed;
 
     //Mapping for that user is whitelisted.
     mapping(address => bool) public isWhitelisted;
 
     //Mapping for that user is whitelisted.
     mapping(uint256 => address) public whitelist;
-
-    //Mapping from address to the amount of $POLLEN token to claim.
-    mapping(address => uint256) public rewardAmount;
-
-    //Mapping from address and index to tokenId.
-    mapping(address => mapping(uint256 => uint256)) public tokenIds;
-
-    //Mapping from tokenId to the reward amount.
-    mapping(uint256 => uint256) public rewardPerId;
 
     /**
      * @dev Emitted when `tokenId` token is transferred from `from` to `to`.
@@ -110,6 +110,16 @@ contract OnePlantTreasure is Initializable, OwnableUpgradeable {
      */
     event Minted(address indexed owner, uint256 tokenId, uint256 indexed blockNumber, uint256 index);
 
+    /**
+     * @dev Emitted when mint is opened.
+     */
+    event OpenMint(bool indexed flag);
+    
+    /**
+     * @dev Emitted when game is reopened.
+     */
+    event Reopen(uint256 indexed blockNumber);
+
 
     function initialize() public initializer {
         
@@ -120,12 +130,12 @@ contract OnePlantTreasure is Initializable, OwnableUpgradeable {
         
         DURATION = 75;   // 15 minutes
         MATURITY = 7200; // 24 hours
+        lastReopen = block.number;
 
         POLLEN = 0x8E7Dc902747F8450bd262E2A51B5030B6f1AD320;
-        scDev = 0x372B95Ac394F7dbdDc90f7a07551fb75509346A8;
-        ftDev = 0x5546e8e71fCcEc025265fB07D4d4bd46Cee55aa9;
+        smartDev = 0x372B95Ac394F7dbdDc90f7a07551fb75509346A8;
+        frontDev = 0x5546e8e71fCcEc025265fB07D4d4bd46Cee55aa9;
 
-        rewardRatio = 0.000005 ether;
         lowestEmber = 75;
     }
 
@@ -147,7 +157,7 @@ contract OnePlantTreasure is Initializable, OwnableUpgradeable {
      * @dev Throws if caller is not management team
      */
     modifier onlyManager() {
-        require(_msgSender() == owner() || _msgSender() == scDev, "NOT_ALLOWED");
+        require(_msgSender() == owner() || _msgSender() == smartDev, "NOT_ALLOWED");
         _;
     }
 
@@ -219,6 +229,14 @@ contract OnePlantTreasure is Initializable, OwnableUpgradeable {
     }
 
     /**
+     * @dev See the 
+     */
+    function tokenOfOwnerByIndex(address owner, uint256 index) public view returns (uint256) {
+        require(index < balanceOf(owner), "Index out of bounds");
+        return _ownedTokens[owner][index];
+    }
+
+    /**
      * @dev See the token ID approval.
      */
     function getApproved(uint256 tokenId) public view returns(address) {
@@ -239,7 +257,7 @@ contract OnePlantTreasure is Initializable, OwnableUpgradeable {
     function tokenURI(uint256 tokenId) public view returns(string memory) {
         require(_exists(tokenId), "NOT_EXIST");
         
-        return string(abi.encodePacked(baseURI(), tokenId, ".json"));
+        return string(abi.encodePacked(_baseURI, _toString(tokenId), "/", _toString(_ember[tokenId]), "/", _toString(_mintingBlock[tokenId] + MATURITY)));
     }
 
     /**
@@ -258,49 +276,45 @@ contract OnePlantTreasure is Initializable, OwnableUpgradeable {
      * @dev Mint One Plant NFT
      */
     function mint() external payable {
-        require(open,                                    "NOT OPEN");
-        require(block.number <= lastMinted() + DURATION, "GAME OVER");
+        require(open, "NOT OPEN");
+        require(
+          block.number < lastMinted() + DURATION ||
+          block.number < lastReopen + DURATION,
+          "GAME OVER"
+        );
 
-        maxTokenId++;
         uint256 index = getEmber();
         if(index < lowestEmber) lowestEmber = index;
-
-        if(msg.value > 0) {
-          uint256 amount = msg.value / rewardRatio;
-          rewardAmount[_msgSender()] += amount;
-          rewardPerId[maxTokenId] = amount;
-        }
         
         if(msg.value >= 0.02 ether) {
-          addWhitelist(_msgSender());
+          _addWhitelist(_msgSender());
         }
 
-        equityForSC += msg.value / 10;
-        equityForFT += msg.value / 20;
+        equityForSmart += msg.value / 10;
+        equityForFront += msg.value / 20;
 
-        emit Minted(_msgSender(), maxTokenId, block.number, index);
+        emit Minted(_msgSender(), ++maxTokenId, block.number, index);
         _safeMint(_msgSender(), maxTokenId, index);
     }
 
     /**
      * @dev Function to claim the reward in $POLLEN token.
      */
-    function claimReward() external {
-      address owner = _msgSender();
-      require(rewardAmount[owner] > 0, "NO_REWARD");
-      uint256 value = 0;
-      for(uint256 i = 1; i <= _mintedCount[owner]; i ++) {
-        uint256 index = tokenIds[owner][i];
-        uint256 mintedBlock = _mintingBlock[index];
+    function claimReward(uint256 tokenId) external onlyMature(tokenId){
+      require(_exists(tokenId), "INVALID_TOKEN_ID");
+      require(_msgSender() == _owners[tokenId], "NOT_OWNER");
+      require(!isClaimed[tokenId], "OWNER_CLAIMED");
+      
+      uint256 value = DURATION - _ember[tokenId];
+      uint256 index = value / 5;
+      uint256 mainValue = (index == 0) ? 0 : 2 ** (index - 1) * 10;
+      uint256 restValue = value % 5 + 1;
 
-        if(block.number < mintedBlock + MATURITY) break;
-        value += rewardPerId[index];
-        rewardAmount[owner] -= rewardPerId[index];
-        rewardPerId[index] = 0;
-      }
+      uint256 amount =  mainValue + restValue;
+      if(value == 74) amount += 18075;
 
-      require(value > 0, "NOT_IN_TIME");
-      IERC20Upgradeable(POLLEN).transfer(_msgSender(), value * 10**18);
+      IERC20Upgradeable(POLLEN).transfer(_msgSender(), amount * 10**18);
+      isClaimed[tokenId] = true;
     }
 
     /**
@@ -335,6 +349,7 @@ contract OnePlantTreasure is Initializable, OwnableUpgradeable {
     ) public onlyMature(tokenId) {
         require(_isApprovedOrOwner(_msgSender(), tokenId), "WRONG_FROM");
         require(to != address(0), "INVALID_RECEIVER");
+        require(isClaimed[tokenId], "Owner unclaimed rewards");
 
         delete _tokenApprovals[tokenId];
 
@@ -344,6 +359,8 @@ contract OnePlantTreasure is Initializable, OwnableUpgradeable {
         }
 
         _owners[tokenId] = to;
+        
+        _updateOwnedTokens(from, to, tokenId);
 
         emit Transfer(from, to, tokenId);
     }
@@ -387,10 +404,36 @@ contract OnePlantTreasure is Initializable, OwnableUpgradeable {
     ////////////////////////////////////////////////*/
     
     /**
+     * @dev Function to claim the reward in $POLLEN token.
+     */
+    function getAmountOfReward(uint256 tokenId) external view returns(uint256){
+      require(!isClaimed[tokenId], "OWNER_CLAIMED");
+      
+      uint256 value = DURATION - _ember[tokenId];
+      uint256 index = value / 5;
+      uint256 mainValue = (index == 0) ? 0 : 2 ** (index - 1) * 10;
+      uint256 restValue = value % 5 + 1;
+
+      uint256 amount =  mainValue + restValue;
+      if(value == 74) amount += 18075;
+
+      return amount;
+    }
+
+    /**
      * @dev Set the mint availability.
      */
     function setOpen(bool _open) external onlyManager {
       open = _open;
+      emit OpenMint(_open);
+    }
+
+    /**
+     * @dev Set closed game to reopen
+     */
+    function setReopen() external onlyOwner {
+      lastReopen = block.number;
+      emit Reopen(block.number);
     }
 
     /**
@@ -398,13 +441,6 @@ contract OnePlantTreasure is Initializable, OwnableUpgradeable {
      */
     function setBaseURI(string memory _uri) external onlyManager {
         _baseURI = _uri;
-    }
-
-    /**
-     * @dev Set the ratio of the reward.
-     */
-    function setRewardRatio(uint256 _value) external onlyOwner {
-      rewardRatio = _value * 10**18;
     }
 
     /**
@@ -418,32 +454,31 @@ contract OnePlantTreasure is Initializable, OwnableUpgradeable {
         return DURATION - elapsed;
     }
 
-
     /**
      * @dev Withdraw ETH for frontend dev.
      */
-    function withdrawForFT() external {
-      require(_msgSender() == ftDev, "NOT_DEV");
-      (bool success, ) = payable(ftDev).call{value: equityForFT}("");
+    function withdrawForFront() external {
+      require(_msgSender() == frontDev, "NOT_FRONT_DEV");
+      (bool success, ) = payable(frontDev).call{value: equityForFront}("");
       require(success, "Transfer Failed");
-      equityForFT = 0;
+      equityForFront = 0;
     }
 
     /**
      * @dev Withdraw ETH for smart contract dev.
      */
-    function withdrawForSC() external {
-      require(_msgSender() == scDev, "NOT_DEV");
-      (bool success, ) = payable(scDev).call{value: equityForSC}("");
+    function withdrawForSmart() external {
+      require(_msgSender() == smartDev, "NOT_SMART_DEV");
+      (bool success, ) = payable(smartDev).call{value: equityForSmart}("");
       require(success, "Transfer Failed");
-      equityForSC = 0;
+      equityForSmart = 0;
     }
 
     /**
      * @dev Withdraw ETH for Owner.
      */
     function withdrawAllForOwner() external onlyOwner {
-      uint256 amount = address(this).balance - ( equityForSC + equityForFT );
+      uint256 amount = address(this).balance - ( equityForSmart + equityForFront );
       (bool success, ) = payable(_msgSender()).call{value: amount}("");
       require(success, "Transfer Failed!");
     }
@@ -468,7 +503,8 @@ contract OnePlantTreasure is Initializable, OwnableUpgradeable {
         _mintingBlock[tokenId] = block.number;
         _ember[tokenId] = ember_;
 
-        tokenIds[to][_mintedCount[to]] = tokenId;
+        _ownedTokens[to][_balances[to] - 1] = tokenId;
+        _ownedTokensIndex[tokenId] = _balances[to] - 1;
     }
 
     function _safeMint(address to, uint256 id, uint256 index) private {
@@ -492,16 +528,64 @@ contract OnePlantTreasure is Initializable, OwnableUpgradeable {
     /**
      * @dev Add user to whitelist.
      */
-    function addWhitelist(address user) private {
+    function _addWhitelist(address user) private {
         isWhitelisted[user] = true;
-        whitelist[++countWL] = user;
+        whitelist[countWL++] = user;
     }
+
+
+    function _updateOwnedTokens(address from, address to, uint256 tokenId) private {
+        // To prevent a gap in from's tokens array, we store the last token in the index of the token to delete, and
+        // then delete the last slot (swap and pop).
+
+        uint256 lastTokenIndex = balanceOf(from) - 1;
+        uint256 tokenIndex = _ownedTokensIndex[tokenId];
+
+        // When the token to delete is the last token, the swap operation is unnecessary
+        if (tokenIndex != lastTokenIndex) {
+            uint256 lastTokenId = _ownedTokens[from][lastTokenIndex];
+
+            _ownedTokens[from][tokenIndex] = lastTokenId; // Move the last token to the slot of the to-delete token
+            _ownedTokensIndex[lastTokenId] = tokenIndex; // Update the moved token's index
+        }
+
+        // This also deletes the contents at the last position of the array
+        delete _ownedTokensIndex[tokenId];
+        delete _ownedTokens[from][lastTokenIndex];
+
+        _ownedTokens[to][_balances[to] - 1] = tokenId;
+        _ownedTokensIndex[tokenId] = _balances[to] - 1;
+    }
+    
 
     /**
      * @dev See the token ID existence.
      */
     function _exists(uint256 tokenId) private view returns(bool) {
         return _owners[tokenId] != address(0);
+    }
+
+    /**
+     * @dev Convert uint256 to string.
+     */
+
+    function _toString(uint256 value) internal pure returns (string memory) {
+        if (value == 0) {
+            return "0";
+        }
+        uint256 temp = value;
+        uint256 digits;
+        while (temp != 0) {
+            digits++;
+            temp /= 10;
+        }
+        bytes memory buffer = new bytes(digits);
+        while (value != 0) {
+            digits -= 1;
+            buffer[digits] = bytes1(uint8(48 + uint256(value % 10)));
+            value /= 10;
+        }
+        return string(buffer);
     }
 
     /**
