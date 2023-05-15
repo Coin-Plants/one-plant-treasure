@@ -81,6 +81,12 @@ contract OnePlantTreasure is Initializable, OwnableUpgradeable {
     //Length of the whitelist.
     uint256 public countWL;
 
+    //Mint Flag for first start
+    bool public firstFlag;
+
+    //First Open Block
+    uint256 public firstOpenBlock;
+
     //Mapping to check if the tokenId owner has claimed the reward.
     mapping(uint256 => bool) public isClaimed;
 
@@ -130,7 +136,6 @@ contract OnePlantTreasure is Initializable, OwnableUpgradeable {
         
         DURATION = 75;   // 15 minutes
         MATURITY = 7200; // 24 hours
-        lastReopen = block.number;
 
         POLLEN = 0x8E7Dc902747F8450bd262E2A51B5030B6f1AD320;
         smartDev = 0x372B95Ac394F7dbdDc90f7a07551fb75509346A8;
@@ -256,14 +261,18 @@ contract OnePlantTreasure is Initializable, OwnableUpgradeable {
      */
     function tokenURI(uint256 tokenId) public view returns(string memory) {
         require(_exists(tokenId), "NOT_EXIST");
-        
-        return string(abi.encodePacked(_baseURI, _toString(tokenId), "/", _toString(_ember[tokenId]), "/", _toString(_mintingBlock[tokenId] + MATURITY)));
+        uint256 metaRank = _ember[tokenId] == 0 ? 15 : (14 - (_ember[tokenId] - 1) / 5);
+        return string(abi.encodePacked(_baseURI, _toString(metaRank), ".json"));
     }
 
     /**
      * @dev See the last minted block number
      */
     function lastMinted() public view returns(uint256) {
+      if(
+        block.number > _mintingBlock[maxTokenId] + DURATION &&
+        block.number <= lastReopen + DURATION
+      ) return lastReopen;
       return maxTokenId == 0 ? block.number : _mintingBlock[maxTokenId];
     }
 
@@ -278,12 +287,12 @@ contract OnePlantTreasure is Initializable, OwnableUpgradeable {
     function mint() external payable {
         require(open, "NOT OPEN");
         require(
-          block.number < lastMinted() + DURATION ||
-          block.number < lastReopen + DURATION,
+          block.number <= lastMinted() + DURATION ||
+          block.number <= lastReopen + DURATION,
           "GAME OVER"
         );
 
-        uint256 index = getEmber();
+        uint256 index = currentEmber();
         if(index < lowestEmber) lowestEmber = index;
         
         if(msg.value >= 0.02 ether) {
@@ -424,6 +433,10 @@ contract OnePlantTreasure is Initializable, OwnableUpgradeable {
      * @dev Set the mint availability.
      */
     function setOpen(bool _open) external onlyManager {
+      if(!firstFlag) {
+        firstFlag = true;
+        firstOpenBlock = block.number;
+      }
       open = _open;
       emit OpenMint(_open);
     }
@@ -446,12 +459,11 @@ contract OnePlantTreasure is Initializable, OwnableUpgradeable {
     /**
      * @dev Get the number of blocks left.
      */
-    function getEmber() public view returns(uint256) {
-        uint256 elapsed = block.number - lastMinted();
+    function currentEmber() public view returns(uint256) {
+        uint256 mintPass = block.number - lastMinted();
+        uint256 reopenPass = block.number - lastReopen;
 
-        require(DURATION > elapsed, "GAME OVER");
-
-        return DURATION - elapsed;
+        return mintPass <= DURATION ? (DURATION - mintPass) : (DURATION - reopenPass);
     }
 
     /**
