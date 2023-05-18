@@ -444,7 +444,7 @@ contract OnePlantTreasure is Initializable, OwnableUpgradeable {
     /**
      * @dev Set closed game to reopen
      */
-    function setReopen() external onlyOwner {
+    function setReopen() external {
       lastReopen = block.number;
       emit Reopen(block.number);
     }
