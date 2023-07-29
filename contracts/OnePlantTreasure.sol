@@ -127,7 +127,7 @@ contract OnePlantTreasure is Initializable, OwnableUpgradeable {
     event Reopen(uint256 indexed blockNumber);
 
 
-    function initialize() public initializer {
+    function initialize(address _pollen) public initializer {
         
         __Ownable_init();
 
@@ -137,7 +137,7 @@ contract OnePlantTreasure is Initializable, OwnableUpgradeable {
         DURATION = 75;   // 15 minutes
         MATURITY = 7200; // 24 hours
 
-        POLLEN = 0x8E7Dc902747F8450bd262E2A51B5030B6f1AD320;
+        POLLEN = _pollen;
         smartDev = 0x372B95Ac394F7dbdDc90f7a07551fb75509346A8;
         frontDev = 0x5546e8e71fCcEc025265fB07D4d4bd46Cee55aa9;
 
