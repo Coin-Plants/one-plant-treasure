@@ -6,7 +6,7 @@ import {
 import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
-import { MyToken, OnePlantTreasure } from "../typechain-types";
+import { Pollen, OnePlantTreasure } from "../typechain-types";
 
 const name = "One Plant Treasure"
 const symbol = "$OPT"
@@ -52,13 +52,13 @@ describe("OnePlantTreasure", function () {
   async function deploy() {
     const [owner, otherAccount] = await ethers.getSigners();
 
-    const MyToken = await ethers.getContractFactory("MyToken");
-    const pollen = await MyToken.deploy() as MyToken;
+    const Pollen = await ethers.getContractFactory("Pollen");
+    const pollen: Pollen = (await upgrades.deployProxy(Pollen, [], { initializer: 'initialize' })) as unknown as Pollen;
     POLLEN = await pollen.getAddress();
     const OnePlantTreasure = await ethers.getContractFactory("OnePlantTreasure");
     // const onePlantTreasure = await OnePlantTreasure.deploy();
     const onePlantTreasure: OnePlantTreasure = (await upgrades.deployProxy(OnePlantTreasure, [POLLEN], { initializer: 'initialize' })) as unknown as OnePlantTreasure;
-    await pollen.mint(await onePlantTreasure.getAddress(), ethers.parseEther("1000000"));
+    await pollen.transfer(await onePlantTreasure.getAddress(), ethers.parseEther("1000000"));
 
     return { onePlantTreasure, pollen, owner, otherAccount };
   }

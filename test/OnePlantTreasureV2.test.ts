@@ -6,7 +6,7 @@ import {
 import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
-import { MyToken, OnePlantTreasure, OnePlantTreasureV2 } from "../typechain-types";
+import { Pollen, OnePlantTreasure, OnePlantTreasureV2 } from "../typechain-types";
 
 const name = "One Plant Treasure"
 const symbol = "$OPT"
@@ -18,18 +18,18 @@ const frontDev = "0x5546e8e71fCcEc025265fB07D4d4bd46Cee55aa9";
 
 // Mint gas cost: 155,272
 // Mint gas cost: 239,836 with 0.1 ETH
-describe("OnePlantTreasureV2", function () {
+describe.only("OnePlantTreasureV2", function () {
   async function deploy() {
     const [owner, otherAccount] = await ethers.getSigners();
 
-    const MyToken = await ethers.getContractFactory("MyToken");
-    const pollen = await MyToken.deploy() as MyToken;
+    const Pollen = await ethers.getContractFactory("Pollen");
+    const pollen: Pollen = (await upgrades.deployProxy(Pollen, [], { initializer: 'initialize' })) as unknown as Pollen;
+
     POLLEN = await pollen.getAddress();
     const OnePlantTreasure = await ethers.getContractFactory("OnePlantTreasureV2");
-    // const onePlantTreasure = await OnePlantTreasure.deploy();
     const onePlantTreasure: OnePlantTreasureV2 = (await upgrades.deployProxy(OnePlantTreasure, [POLLEN], { initializer: 'initialize' })) as unknown as OnePlantTreasureV2;
     await onePlantTreasure.setBaseURI("ipfs://");
-    await pollen.mint(await onePlantTreasure.getAddress(), ethers.parseEther("7000000"));
+    await pollen.transfer(await onePlantTreasure.getAddress(), ethers.parseEther("7000000"));
 
     return { onePlantTreasure, pollen, owner, otherAccount };
   }
@@ -105,7 +105,7 @@ describe("OnePlantTreasureV2", function () {
     it("Should claimRewards", async function () {
       const { onePlantTreasure, pollen, owner, otherAccount } = await loadFixture(deploy);
       await onePlantTreasure.connect(owner).setOpen(true);
-      await onePlantTreasure.connect(otherAccount).mint();
+      await onePlantTreasure.connect(otherAccount).mint({ value: ethers.parseEther("0.01")});
       await mine(DURATION * 1000);
       await onePlantTreasure.connect(otherAccount).claimReward(1);
       expect(await pollen.balanceOf(otherAccount.address)).to.equal(ethers.parseEther("2"));
@@ -114,7 +114,7 @@ describe("OnePlantTreasureV2", function () {
     it("Should fail if token id doesnt exist", async function () {
       const { onePlantTreasure, pollen, owner, otherAccount } = await loadFixture(deploy);
       await onePlantTreasure.connect(owner).setOpen(true);
-      await onePlantTreasure.connect(otherAccount).mint();
+      await onePlantTreasure.connect(otherAccount).mint({ value: ethers.parseEther("0.01")});
       await mine(DURATION * 1000);
       await expect(
         onePlantTreasure.connect(otherAccount).claimReward(2)
@@ -123,16 +123,25 @@ describe("OnePlantTreasureV2", function () {
     it("Should fail if caller is not the owner", async function () {
       const { onePlantTreasure, pollen, owner, otherAccount } = await loadFixture(deploy);
       await onePlantTreasure.connect(owner).setOpen(true);
-      await onePlantTreasure.connect(otherAccount).mint();
+      await onePlantTreasure.connect(otherAccount).mint({ value: ethers.parseEther("0.01") });
       await mine(DURATION * 1000);
       await expect(
         onePlantTreasure.connect(owner).claimReward(1)
       ).to.be.revertedWith("NOT_OWNER");
     });
-    it("Should fail if already claimed", async function () {
+    it("Should fail if no ETH provided on mint", async function () {
       const { onePlantTreasure, pollen, owner, otherAccount } = await loadFixture(deploy);
       await onePlantTreasure.connect(owner).setOpen(true);
       await onePlantTreasure.connect(otherAccount).mint();
+      await mine(DURATION * 1000);
+      await expect(
+        onePlantTreasure.connect(otherAccount).claimReward(1)
+      ).to.be.revertedWith("NO_VALUE_PROVIDED");
+    });
+    it("Should fail if already claimed", async function () {
+      const { onePlantTreasure, pollen, owner, otherAccount } = await loadFixture(deploy);
+      await onePlantTreasure.connect(owner).setOpen(true);
+      await onePlantTreasure.connect(otherAccount).mint({ value: ethers.parseEther("0.01")});
       await mine(DURATION * 1000);
       await onePlantTreasure.connect(otherAccount).claimReward(1);
       await expect(
