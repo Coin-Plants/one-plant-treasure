@@ -14,7 +14,7 @@ contract Pollen is Initializable, ERC20Upgradeable, PausableUpgradeable, Ownable
     }
 
     function initialize() initializer public {
-        __ERC20_init("Pollen", "POLLEN");
+        __ERC20_init("POLLEN", "$PLN");
         __Pausable_init();
         __Ownable_init();
         __UUPSUpgradeable_init();
